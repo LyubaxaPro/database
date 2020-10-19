@@ -172,7 +172,7 @@ DELETE FROM games_details
 WHERE pts in (SELECT pts_home FROM games WHERE pts_home <100)
 
 -- 22) Инструкция SELECT, использующая простое обобщенное табличное выражение
-Выбрать из таблицы среднее количество проигрышей и выйгрышей по командам
+--Выбрать из таблицы среднее количество проигрышей и выйгрышей по командам
 WITH results(avg_w, avg_l, team)
 AS 
 (
