@@ -2,3 +2,117 @@
 {"player_name":"Brian Hamilton","team_id":"1610612751","player_id":"201646"}
 {"player_name":"Wesley Matthews","team_id":"1610612762","player_id":"500032"}
 {"player_name":"Wesley Maews","team_id":"1610610762","player_id":"1628778"}
+
+
+
+#include "mainwindow.h"
+#include "planet.h"
+#include "point.h"
+#include "polygon.h"
+#include "superpolygon.h"
+#include "ui_mainwindow.h"
+#include "visor.h"
+#include <QFileDialog>
+#include <iostream>
+#include <math.h>
+
+std::string path_to_dir = "/home/lyubaxapro/CG_COURSE/cg_course_project/"
+                          "planetary_system/models_directory";
+
+QVector3D c(7, 0, 0);
+QVector3D v(0, 1, 0);
+QVector3D r(0, 0, 1);
+double angle = 10.0 * (M_PI / 180.0);
+
+
+Star sun;
+
+std::vector<Planet> planets;
+QVector3D shadow_color(20, 20, 20);
+
+Visor spec(c, v, r, 20, 20);
+
+std::vector<QVector3D> lights(0);
+std::vector<std::vector<Superpolygon>>
+    shadow_cloaks; // shadow_clock[i][j] - теневой плащ по i-му элементу lights
+                   // для j-ой планеты
+
+void load_models() {
+  planets.resize(0);
+  FILE *f;
+  f = fopen((path_to_dir + "/" + "models.txt").c_str(), "rt");
+  int count_dir;
+  fscanf(f, "%d", &count_dir);
+
+  char dirname[100];
+  for (int i = 0; i < count_dir - 1; i++) {
+    fscanf(f, "%s", &dirname);
+    Planet p(path_to_dir + "/" + dirname);
+    planets.push_back(p);
+  }
+
+  fscanf(f, "%s", &dirname);
+  sun = Star(path_to_dir + "/" + dirname);
+
+  fclose(f);
+  planets[0].set_color(QVector3D(254, 34, 73));
+  planets[1].set_color(QVector3D(227, 34, 245));
+  planets[2].set_color(QVector3D(34, 94, 245));
+  planets[3].set_color(QVector3D(34, 245, 118));
+//  planets[4].set_color(QVector3D(255, 234, 168));
+  std::vector<QVector3D> sun_colors = {QVector3D(255, 207, 72), QVector3D(253, 234, 168), QVector3D(255, 246, 122), QVector3D(255, 249, 41),
+                                      QVector3D(255, 207, 72), QVector3D(255, 168, 18)};
+  sun.set_colors(sun_colors);
+}
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent), ui(new Ui::MainWindow) {
+  ui->setupUi(this);
+
+  load_models();
+  lights.push_back(QVector3D(0, 0, 0));
+  shadow_cloaks.resize(lights.size());
+  for (unsigned long i = 0; i < shadow_cloaks.size(); i++)
+    shadow_cloaks[i].resize(planets.size());
+}
+
+MainWindow::~MainWindow() { delete ui; }
+
+void count_shadow_cloack() {
+  for (unsigned long i = 0; i < shadow_cloaks.size(); i++) {
+    for (unsigned long j = 0; j < shadow_cloaks[i].size(); j++) {
+      Superpolygon spp(planets[j], lights[i]);
+      shadow_cloaks[i][j] = spp;
+    }
+  }
+}
+
+void Render(QImage &image, Planet planet) {
+  QPainter p(&image);
+
+  for (int i = 0; i < planet.get_count_polygons(); i++) {
+    Point q1, q2, q3;
+    q1 = planet.get_points()[planet.get_polygons()[i].get_a()];
+    q2 = planet.get_points()[planet.get_polygons()[i].get_b()];
+    q3 = planet.get_points()[planet.get_polygons()[i].get_c()];
+
+    if (0.0 > QVector3D::dotProduct(planet.get_normales()[i], spec.get_VoV())) {
+      QPointF tmp = spec.proj_to_plane_visor(q1.convert_to_qvector3d());
+      QPoint buf =
+          QPoint(qRound(tmp.x() / 2 / spec.get_width() * image.width()),
+                 qRound(tmp.y() / 2 / spec.get_height() * image.height()));
+      QPolygon polygon = QPolygon();
+      polygon << buf;
+
+      tmp = spec.proj_to_plane_visor(q2.convert_to_qvector3d());
+      buf = QPoint(qRound(tmp.x() / 2 / spec.get_width() * image.width()),
+                   qRound(tmp.y() / 2 / spec.get_height() * image.height()));
+      polygon << buf;
+      tmp = spec.proj_to_plane_visor(q3.convert_to_qvector3d());
+      buf = QPoint(qRound(tmp.x() / 2 / spec.get_width() * image.width()),
+                   qRound(tmp.y() / 2 / spec.get_height() * image.height()));
+      polygon << buf;
+      p.setBrush(QColor(planet.get_polygons()[i].get_real_color().x(),
+                        planet.get_polygons()[i].get_real_color().y(),
+                        planet.get_polygons()[i].get_real_color().z()));
+      p.setPen(QColor(planet.get_po
