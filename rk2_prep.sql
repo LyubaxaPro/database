@@ -250,7 +250,6 @@ create temp table
 best_dir as
 select *
 from director
-where experience > 20
 
 -- 12)Инструкция SELECT, использующая вложенные коррелированные подзапросы в качестве производных таблиц в предложении FROM.
 --Вывести информацию из rel_work_cust и customer_id, customer_name из customer гду customer_id < 3
@@ -299,6 +298,17 @@ from workshop join rel_work_cust on rel_work_cust.workshop_id = workshop.worksho
 join customer on customer.customer_id = rel_work_cust.customer_id
 GROUP by customer.customer_id
 HAVING customer.customer_id >= 3
+
+
+--19)Инструкция UPDATE со скалярным подзапросом в предложении SET
+UPDATE ranking
+SET w =
+(
+SELECT AVG(w)
+FROM ranking
+WHERE team_id = 1610612749
+)
+WHERE team_id = 1610612749
 
 -- 22) Инструкция SELECT, использующая простое обобщенное табличное выражение
 --вывести средний год открытия посещённых посетителем кружков
@@ -351,4 +361,210 @@ test_inserted AS(SELECT name, surname, age, ROW_NUMBER() OVER(PARTITION BY name,
 SELECT *
 FROM test
 
+--==============================================================
+-- Хранимую процедуру доступа к метаданным  (название таблицы и размер)
+-- Информационная схема состоит из набора представлений, содержащих информацию об объектах, определенных в текущей базе данных.
+-- pg_relation_size принимает OID или имя таблицы, индекса или TOAST-таблицы и возвращает размер одного слоя этого отношения (в байтах). (Заметьте, что в большинстве случаев удобнее использовать более высокоуровневые функции pg_total_relation_size и pg_table_size, которые суммируют размер всех слоёв.)
+ --С одним аргументом она возвращает размер основного слоя для данных заданного отношения.
+-- desc - сортировка в порядке убывания
+select table_name, count(*) as size
+into my_tables
+from information_schema.tables
+where table_schema = 'public'
+group by table_name;
+
+select * from my_tables;
+
+create or replace function table_size() returns void as
+$$
+declare
+    cur cursor
+    for select table_name, size
+    from (
+        select table_name,
+        pg_relation_size(cast(table_name as varchar)) as size
+        from information_schema.tables
+        where table_schema = 'public'
+        order by size desc
+    ) AS tmp;
+         row record;
+begin
+    open cur;
+    loop
+        fetch cur into row;
+        exit when not found;
+        raise notice '{table : %} {size : %}', row.table_name, row.size;
+        update my_tables
+        set size = row.size
+        where my_tables.table_name = row.table_name;
+    end loop;
+    close cur;
+end
+$$ language plpgsql;
+
+select * from  table_size();
+select * from my_tables;
+
+
+--==============================================================
+Создать хранимую процедуру с выходным параметром, которая выводит
+список имен и параметров всех скалярных SQL функций пользователя
+(функции типа 'FN') в текущей базе данных. Имена функций без параметров
+не выводить. Имена и список параметров должны выводиться в одну строку.
+Выходной параметр возвращает количество найденных функций.
+Созданную хранимую процедуру протестировать. 
+
+-- Получаем информацию о всех функциях
+select proname, pronargs, prorettype, proargtypes
+from pg_proc
+where pronargs > 0; -- кол-во принимаемых аргументов
+
+-- Хранимая процедура доступа к метаданным
+-- Вывести имя функции и типы принимаемых значений
+create or replace procedure show_functions() as
+$$
+declare 
+	cur cursor
+	for select proname, proargtypes
+	from (
+		select proname, pronargs, prorettype, proargtypes
+		from pg_proc
+		where pronargs > 0
+	) AS tmp;
+	row record;
+begin
+	open cur;
+	loop
+		fetch cur into row;
+		exit when not found;
+		raise notice '{func_name : %} {args : %}', row.proname, row.proargtypes;
+	end loop;
+	close cur;
+end
+$$ language plpgsql;
+
+call show_functions();
+
+
+--=====================================================================
+Создать хранимую процедуру с входным параметром – имя базы данных,
+которая выводит имена ограничений CHECK и выражения SQL, которыми
+определяются эти ограничения CHECK, в тексте которых на языке SQL
+встречается предикат 'LIKE'. Созданную хранимую процедуру
+протестировать. 
+
+
+
+(не работает)
+create extension dblink;
+create or replace procedure get_like_constraints(in data_base_name text)
+    language plpgsql
+as
+$$
+declare
+    constraint_rec record;
+begin
+    for constraint_rec in select *
+                          from dblink(concat('dbname=', data_base_name, ' options=-csearch_path='),
+                                      'select conname, consrc
+                                      from pg_constraint
+                                      where contype = ''c''
+                                          and (lower(consrc) like ''% like %'' or consrc like ''% ~~ %'')')
+                                   as t1(con_name varchar, con_src varchar)
+        loop
+            raise info 'Name: %, src: %', constraint_rec.con_name, constraint_rec.con_src;
+        end loop;
+end
+$$;
+
+--delete from employees  where  full_name like '%a%';
+
+-- Тестируем
+-- Добавили ограничение с like 
+alter table employees 
+    add constraint a_in_name check ( full_name like '%a%');
+-- Вызвали процедуру
+DO
+$$
+    begin
+        call get_like_constraints('rk2');
+    end;
+$$;
+--=======================================================================================================
+-- Создать хранимую процедуру с входным параметром – "имя таблицы",
+-- которая удаляет дубликаты записей из указанной таблицы в текущей
+-- базе данных. Созданную процедуру протестировать.
+
+create or replace procedure rem_duplicates(in t_name text)
+    language plpgsql
+as
+$$
+declare
+    query text;
+    col text;
+    column_names text[];
+begin
+    query = 'delete from ' || t_name || ' where id in (' ||
+                'select ' || t_name || '.id ' ||
+                'from ' || t_name ||
+                ' join (select id, row_number() over (partition by ';
+    for col in select column_name from information_schema.columns where information_schema.columns.table_name=t_name loop
+        query = query || col || ',';
+    end loop;
+    query = trim(trailing ',' from query);
+    query = query || ') as rn from ' || t_name || ') as t on t.id = ' || t_name || '.id' ||
+            ' where rn > 1)';
+    raise notice '%', query;
+    execute query;
+end
+$$;
+
+-- Тестируем
+-- Добавили дубликаты
+insert into teacher(id, dep_id, name, grade, job)
+select *
+    from teacher
+    where id < 5;
+
+-- Вызвали процедуру
+DO
+$$
+    begin
+        call rem_duplicates('teacher');
+    end;
+$$;
+
+--================================================================================================
+-- Создать хранимую процедуру с входным параметром – имя базы данных,
+-- которая выводит имена ограничений CHECK и выражения SQL, которыми
+-- определяются эти ограничения CHECK, в тексте которых на языке SQL
+-- встречается предикат 'LIKE'. Созданную хранимую процедуру
+-- протестировать.
+create extension dblink;
+create procedure likes_constraints(in db text) language plpgsql as $$
+declare
+	record_of_constraints record;
+begin
+	for record_of_constraints in
+		select *
+		from dblink(
+			concat('dbname=', db, ' options=-csearch_path='),
+			'select conname, consrc
+			from pg_constraint
+			where contype = ''c'' and (lower(consrc) like ''% like %'' or consrc like ''% ~~ %'')'
+		)
+		as t1(conname varchar, consrc varchar)
+	loop
+		raise info 'Name: %, src: %', record_of_constraints.conname, record_of_constraints.consrc;
+	end loop;
+end
+$$;
+
+-- test
+alter table customers
+	add constraint fullname_contains_e check (fullname like '%e%');
+
+do $$ begin
+		call likes_constraints('rk2');
+end; $$;
 
