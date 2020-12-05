@@ -178,7 +178,7 @@ def output(cur, func):
 def requestPgQuery(connection, query, func):
     cursor = connection.cursor()
     cursor.execute(query)
-    # Если мы не просто читаем, но и вносим изменения в базу данных - необходимо сохранить транзакцию
+    # COMMIT фиксирует текущую транзакцию. Все изменения, произведённые транзакцией, становятся видимыми для других и гарантированно сохранятся в случае сбоя.
     connection.commit()
     output(cursor, func)
     cursor.close()
@@ -231,8 +231,7 @@ def menu(connection):
         choice = int(input())
 
 
-connection = connect()
-
 if __name__ == '__main__':
+    connection = connect()
     menu(connection)
     connection.close()
