@@ -169,21 +169,23 @@ FROM (
 	)
 ) as tmp3
 
-# Вывести все отделы и количество сотрудников хоть раз опоздавших за всю историю работы (походу неправильно)
-select count(tmp2.em), department
-from (
-	select e.id as em, e.department as e_d
-	from (
-		select id_employee, rdate, min(rtime) as first_entry
-		from record
-		where rtype = 1
-		group by id_employee, rdate
-	) as tmp inner join employee e on e.id = tmp.id_employee
-	where first_entry > '9:00'
-	group by e.id
-) as tmp2 right join employee e on tmp2.e_d = e.department
-group by e.department;
-
+# Вывести все отделы и количество сотрудников хоть раз опоздавших за всю историю работы 
+-- отделы, количество опоздавших хоть раз за весь учет 
+select w_dep, count(w_id) 
+from ( 
+select distinct employee.id as w_id,-- — distinct, тк кол-во опозданий не важно, только факт опоздания 
+employee.department as w_dep 
+from ( 
+select id_employee, rdate, 
+min(rtime) as intime --— время прихода каждого работника в каждую дату 
+from record
+where rtype = 1 
+group by id_employee, rdate 
+) as tmp join employee on employee.id = tmp.id_employee --— нужно поле отдела их таблицы workers 
+where intime > '09:00' --— время прихода на работу > 9:00 
+) as tmp2 
+group by w_dep;
+ 
 --========================================================================================================================================================================
 -- rk про студентов и преподавателей
 create table teachers (

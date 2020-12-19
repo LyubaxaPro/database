@@ -9,7 +9,6 @@ from datetime import time
 load_dotenv('/home/maksim/lyubaxapro/database/config.env')
 
 ###############################################################################
-#Обработка на уровне БД
 
 def connect():
     connection = None
@@ -30,6 +29,7 @@ def connect():
 
 connection = connect()
 
+# обработка на уровне БД
 #Найти отделы в которых хоть один сотрудник опаздывает больше трёх раз в неделю
 def department_1_1():
     cursor = connection.cursor()
@@ -56,6 +56,7 @@ def department_1_1():
     print(tabulate(answer, headers=['Отдел']))
     cursor.close()
 
+# обработка на уровне БД
 # Средний возраст сотрудников, не находящихся на рабочем месте 8 часов в день
 def mid_age_2_1():
     cursor = connection.cursor()
@@ -100,6 +101,8 @@ FROM (
     print(tabulate(answer, headers=['Возраст']))
     cursor.close()
 
+# обработка на уровне приложения
+#Средний возраст сотрудников, не находящихся на рабочем месте 8 часов в день
 def query2_2():
 
 
@@ -154,7 +157,7 @@ def query2_2():
 
 
 
-
+    print('Средний возраст сотрудников, не находящихся на рабочем месте 8 часов в день')
     if (len(age)) == 0:
         print("Нет таких сотрудников")
     else:
@@ -166,26 +169,26 @@ def query2_2():
 
 
 
-
+# # обработка на уровне БД
 #Вывести все отделы и количество сотрудников хоть раз опоздавших за всю историю работы
 def dep_count_late_3_1():
     cursor = connection.cursor()
     query = '''
-                       select count(tmp2.em), department
-            from (
-                select e.id as em, e.department as e_d
-                from (
-                    select id_employee, rdate, min(rtime) as first_entry
-                    from record
-                    where rtype = 1
-                    group by id_employee, rdate
-                ) as tmp inner join employees e on e.id = tmp.id_employee
-                where first_entry > '9:00'
-                group by e.id
-            ) as tmp2 right join employees e on tmp2.e_d = e.department
-            group by e.department;
-
-    );
+        select w_dep, count(w_id) 
+        from ( 
+        select distinct employee.id as w_id, 
+        employee.department as w_dep 
+        from ( 
+        select id_employee, rdate, 
+        min(rtime) as intime
+        from record
+        where rtype = 1 
+        group by id_employee, rdate 
+        ) as tmp join employee on employee.id = tmp.id_employee 
+        where intime > '09:00' 
+        ) as tmp2 
+        group by w_dep;
+ 
     '''
     cursor.execute(query)
     connection.commit()
@@ -196,6 +199,8 @@ def dep_count_late_3_1():
     print(tabulate(answer, headers=['Количество','Отдел']))
     cursor.close()
 
+## обработка на уровне приложения
+# Вывести все отделы и количество сотрудников хоть раз опоздавших за всю историю работы
 def query3_2():
     check_date_time = time(9, 0)
     cursor = connection.cursor(cursor_factory=DictCursor)
@@ -232,7 +237,7 @@ def query3_2():
                             late[current_department].append(current_id)
                             flag = False
 
-
+    print("Отделы и количество сотрудников хоть раз опоздавших за всю историю работы")
     for k in late.keys():
         print(k, len(late[k]))
 
