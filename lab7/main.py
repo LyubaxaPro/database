@@ -21,7 +21,6 @@ engine = create_engine(connect_string)  # Функция sqlalchemy.create_engin
 meta = MetaData()
 meta.reflect(bind=engine, schema='public')
 
-
 # Создать не менее пяти запросов с использованием всех
 # ключевых слов выражения запроса.
 
@@ -32,29 +31,26 @@ meta.reflect(bind=engine, schema='public')
 # используя Sessionтекущее соединение объекта с базой данных, заполняя строки результатов в объекты, которые затем сохраняются в
 # Sessionструктуре
 # Количество игроков заданной команды
-def count_players_in_team():
+def count_players_in_team(con):
     try:
-        con = Session(bind=engine)
         query = '''select count(*)
                      from players
                      where players.team_id = 1610612762'''
         cnt = con.execute(query).fetchone()[0]
-        con.close()
         print(cnt)
     except Exception:
         print("Возникла проблема")
 
 
 # Названия команд, в аббрвиатуре которых есть "MI"
-def teams_with_MI():
+def teams_with_MI(con):
     try:
-        con = Session(bind=engine)
         query = '''SELECT DISTINCT team_id, team_abbreviation
         FROM games_details 
         WHERE team_abbreviation LIKE '%MI%'
         '''
         teams = con.execute(query).fetchall()
-        con.close()
+
         print(tabulate(teams, headers=['team_id', 'team_abbreviation']))
     except Exception:
         print("Возникла проблема")
@@ -62,40 +58,35 @@ def teams_with_MI():
 
 # Инструкция SELECT, использующая скалярные подзапросы в выражениях столбцов.
 # Вывести все данные о командах, у которых количество сыгранных игр в сезоне больше среднего количества игр в сезоне(по всем игрокам)
-def number_of_games_more_than_avg():
+def number_of_games_more_than_avg(con):
     try:
-        con = Session(bind=engine)
         query = '''SELECT *
         FROM ranking
         WHERE g_i > (SELECT AVG(g_i) FROM ranking) '''
 
         answ = con.execute(query).fetchall()
-        con.close()
         print(tabulate(answ, headers=['team_id', 'season_id', 'team']))
     except Exception:
         print("Возникла проблема")
 
 
 # Вывести среднее количество побед в 2019 сезоне по восточной и западной конференции
-def avg_win_in_2019_west_cost():
+def avg_win_in_2019_west_cost(con):
     try:
-        con = Session(bind=engine)
         query = '''SELECT CAST(AVG(w) as INT), season_id, conference
         FROM ranking
         GROUP BY conference, season_id
         HAVING season_id = 22019 '''
 
         answ = con.execute(query).fetchall()
-        con.close()
         print(tabulate(answ, headers=['avg', 'season_id', 'conference']))
     except Exception:
         print("Возникла проблема")
 
 
 # Вывести id команды, сезон, среднее количество побед по сезону(сортровка по w_ptc), минимальное количество победы), номера строк с сортировкой по рекорду дома
-def over_partition():
+def over_partition(con):
     try:
-        con = Session(bind=engine)
         query = '''SELECT team_id, season_id,
                     AVG(w)
                     OVER (PARTITION BY season_id order by w_pct)as avg_w_team,
@@ -104,7 +95,6 @@ def over_partition():
                     FROM ranking'''
 
         answ = con.execute(query).fetchall()
-        con.close()
         print(tabulate(answ, headers=['team_id', 'season_id', 'avg_w_team', 'row_num']))
     except Exception:
         print("Возникла проблема")
@@ -117,9 +107,8 @@ def over_partition():
 # 3. Запись (Добавление) в XML/JSON документ.
 
 # Запись в JSON документ, извлекая его из таблиц
-def create_players_json():
+def create_players_json(con):
     try:
-        con = Session(bind=engine)
         query = '''
         copy(select
         array_to_json(array_agg(row_to_json(t))) as "players"
@@ -127,15 +116,13 @@ def create_players_json():
         to
         '/tmp/players.json' '''
         con.execute(query)
-        con.close()
     except Exception:
         print("Возникла проблема")
 
 
 # Чтение из JSON документа
-def read_from_json():
+def read_from_json(con):
     try:
-        con = Session(bind=engine)
         query = '''
 
 
@@ -160,7 +147,6 @@ def read_from_json():
 
         '''
         answ = con.execute(query).fetchall()
-        con.close()
         print(tabulate(answ, headers=['player_name', 'team_id', 'player_id']))
 
     except Exception:
@@ -168,9 +154,8 @@ def read_from_json():
 
 
 # Обновление JSON документа
-def update_json():
+def update_json(con):
     try:
-        con = Session(bind=engine)
         query = ''' 
                     create temporary table json_import (values text);
                     copy json_import from '/tmp/players.json';
@@ -201,7 +186,6 @@ def update_json():
 
                     '''
         answ = con.execute(query).fetchall()
-        con.close()
         print(tabulate(answ, headers=['player_name', 'team_id', 'player_id']))
 
     except Exception:
@@ -339,28 +323,25 @@ class W_e(Base):
     Column(types.Integer())
 
 # Добавить игрока
-def add_player():
+def add_player(conn):
     try:
         player_name = str(input('Player_name >'))
         team_id = str(input('Team_id >'))
         player_id = str(input('Player_id >'))
-
-        conn = Session(bind=engine)
         new_player = Players(player_name=player_name, team_id=team_id, player_id=player_id)
         conn.add(new_player)
         conn.commit()
-        conn.close()
     except Exception:
         print("Возникла проблема")
 
 #Изменить игрока
-def update_player():
+def update_player(conn):
     try:
         old_id = str(input('Player_id to find > '))
         new_player_name = str(input('New player_name >'))
         new_team_id = str(input('New team_id >'))
         new_player_id = str(input('New player_id >'))
-        conn = Session(bind=engine)
+
         player = conn.query(Players).filter(
             # pylint: disable=no-member
             Players.player_id == old_id
@@ -375,16 +356,14 @@ def update_player():
             print("Игрок не найден")
 
         conn.commit()
-        conn.close()
 
     except Exception:
         print("Возникла проблема")
 
 
-def del_player():
+def del_player(conn):
     try:
         player_id_del = str(input('Player_id to find > '))
-        conn = Session(bind=engine)
         player = conn.query(Players).filter(
             # pylint: disable=no-member
             Players.player_id == player_id_del
@@ -397,57 +376,38 @@ def del_player():
             print("Игрок не найден")
 
         conn.commit()
-        conn.close()
     except Exception:
         print("Возникла проблема")
 
 #однотабличный запрос
 #вывести всех игроков команды 1610612762
-def get_players():
+def get_players(conn):
     try:
-        conn = Session(bind=engine)
         query = conn.query(Players.player_name, Players.team_id, Players.player_id).filter(text('team_id = 1610612762')).all()
-
+        conn.commit()
         print(tabulate(query, headers=['player_name', 'team_id', 'player_id']))
-
-        conn.close()
 
     except Exception:
         print("Возникла проблема")
 
-#многотабличный запрос
-# def get_teams_with_MI():
-#    # try:
-#     conn = Session(bind=engine)
-#     query = conn.query(Work_kind.equipment, W_e.id)
-#     query = query.join(W_e, Work_kind.w_id == W_e.w_id)
-#     query = query.filter(text(''' work_kind.equipment = 'gitar' ''')).all()
-#     print(tabulate(query, headers=['equipment', 'id']))
-#
-#     conn.close()
-
-    # except Exception:
-    #     print("Возникла проблема")
-
-def get_teams_with_MI():
+def get_teams_with_MI(conn):
     try:
-        conn = Session(bind=engine)
         cname = str('MIL')
         query = conn.query(Games_details.team_abbreviation, Teams.team_id).filter(
             Games_details.team_id == Teams.team_id).filter(text(' games_details.team_abbreviation = :cname ')).params(cname=cname).first()
 
         print(query[0], query[1])
-        conn.close()
-
+        conn.commit()
     except Exception:
         print("Возникла проблема")
 
 #вызов хранимой процедуры
-def get_procedure():
-    conn = Session(bind=engine)
-    conn.execute(func.update_equipment('c_q', 'AAAAAAAAAAA'))
-    conn.commit()
-    conn.close()
+def get_procedure(conn):
+    try:
+        conn.execute(func.update_equipment('c_q', 'AAAAAAAAAAA'))
+        conn.commit()
+    except Exception:
+        print("Возникла проблема")
 
 def print_menu():
     print("\n\
@@ -480,7 +440,9 @@ __exit = len(execute) - 1
 
 if __name__ == '__main__':
     choice = -1
+    con = Session(bind=engine)
     while choice != __exit:
         print_menu()
         choice = int(input('> '))
-        execute[choice]()
+        execute[choice](con)
+    con.close()
